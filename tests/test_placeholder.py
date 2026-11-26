@@ -11,6 +11,10 @@ PACKAGES = [
     "orphee.net.robots",
     "orphee.sources",
     "orphee.crawl",
+    "orphee.data",
+    "orphee.data.models",
+    "orphee.data.parse",
+    "orphee.data.ingest",
 ]
 
 

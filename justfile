@@ -47,3 +47,8 @@ all:
 # at the robots.txt Crawl-delay — run in background)
 scrape *args:
     uv run --locked python scripts/scrape.py {{args}}
+
+# Parse the raw HTML cache into JSONL records (offline: reads data/raw only)
+# e.g. just ingest --limit 50
+ingest *args:
+    uv run --locked python scripts/ingest.py {{args}}
