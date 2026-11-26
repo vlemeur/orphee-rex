@@ -1,10 +1,12 @@
 """Ingest the raw HTML cache into parsed JSONL — offline (reads data/ only).
 
-Reads the manifest + gzipped cache written by `just scrape`, parses each
-page with parse.parse_notice, and writes one JSON record per notice.
-Unparseable pages are counted in the report, never fatal. A malformed
-manifest line (e.g. a torn trailing line while the scraper is still
-appending) is skipped and counted in report.skipped.
+Source of truth = the HttpClient disk cache under raw_dir/cache/: each
+<sha256>.json sidecar carries the url, each <sha256>.gz the body (both
+written and closed per page, so a mid-scrape ingest sees every fetched
+page). The scrape manifest stays an append-only audit log. Pages are
+filtered on url_prefix, parsed with parse.parse_notice, and written one
+JSON record per line. Unparseable pages / unreadable sidecars are counted
+in the report, never fatal.
 """
 
 from __future__ import annotations
@@ -35,28 +37,40 @@ class IngestReport:
 
 
 def ingest_cache(
-    raw_dir: Path | str, out_path: Path | str, limit: int | None = None
+    raw_dir: Path | str,
+    out_path: Path | str,
+    limit: int | None = None,
+    url_prefix: str | None = None,
 ) -> IngestReport:
-    """Parse every cached page listed in raw_dir/manifest.jsonl into out_path."""
+    """Parse the cached pages of raw_dir/cache into out_path (JSONL).
+
+    Cache sidecars (<sha256>.json, each with its url) drive the enumeration,
+    so a mid-scrape run sees every page already fetched. url_prefix filters
+    documents (e.g. the incident-notice path); limit caps how many are read.
+    """
     raw_dir = Path(raw_dir)
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     report = IngestReport()
-    lines = (raw_dir / "manifest.jsonl").read_text(encoding="utf-8").splitlines()
-    if limit is not None:
-        lines = lines[:limit]
-    with out_path.open("w", encoding="utf-8") as out:
-        for line in lines:
+    cache_dir = raw_dir / "cache"
+    entries: list[tuple[str, str]] = []  # (url, key)
+    if cache_dir.exists():
+        for meta_path in sorted(cache_dir.glob("*.json")):
             try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                report.skipped += 1
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError, OSError:
+                report.skipped += 1  # torn sidecar mid-write
                 continue
-            if entry.get("status") not in ("ok", "cache_hit"):
+            url = str(meta.get("url", ""))
+            if url_prefix is not None and not url.startswith(url_prefix):
                 continue
+            entries.append((url, meta_path.stem))
+    if limit is not None:
+        entries = entries[:limit]
+    with out_path.open("w", encoding="utf-8") as out:
+        for url, key in entries:
             report.total += 1
-            url, key = entry["url"], entry["key"]
-            gz = raw_dir / "cache" / f"{key}.gz"
+            gz = cache_dir / f"{key}.gz"
             try:
                 html = gzip.decompress(gz.read_bytes()).decode("utf-8", "replace")
                 notice = parse_notice(html, url)
