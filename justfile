@@ -40,3 +40,10 @@ all:
     just type-check
     just test
     just check
+
+# Scrape public ASNR sources into the local raw cache (network, rate-limited,
+# resumable via cache + manifest). Incident notices (avis d'incident INB) first.
+# e.g. just scrape --limit 50   (smoke)   ·   just scrape   (full history, hours
+# at the robots.txt Crawl-delay — run in background)
+scrape *args:
+    uv run --locked python scripts/scrape.py {{args}}
