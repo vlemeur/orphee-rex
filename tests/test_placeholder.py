@@ -1,7 +1,19 @@
-"""Placeholder: the package must stay importable (offline)."""
+"""Placeholder: every src/orphee package must stay importable (offline)."""
 
-import orphee
+import importlib
+
+import pytest
+
+PACKAGES = [
+    "orphee",
+    "orphee.net",
+    "orphee.net.http",
+    "orphee.net.robots",
+    "orphee.sources",
+    "orphee.crawl",
+]
 
 
-def test_package_importable() -> None:
-    assert orphee.__doc__ is not None
+@pytest.mark.parametrize("package", PACKAGES)
+def test_package_importable(package: str) -> None:
+    assert importlib.import_module(package) is not None

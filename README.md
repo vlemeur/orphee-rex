@@ -14,8 +14,9 @@ default).
 ## Run
 
 ```bash
-just setup        # uv sync --locked + install prek hooks
-just all          # lint + type-check + tests + prek — the single gate
+just setup               # uv sync --locked + install prek hooks
+just all                 # lint + type-check + tests + prek — the single gate
+just scrape --limit 50   # smoke: ASNR incident notices into the raw cache (network)
 ```
 
 Domain modules under `src/orphee/` and the `scripts/` CLIs land iteratively,
