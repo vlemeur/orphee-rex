@@ -27,6 +27,8 @@ def main() -> None:
 
     report = ingest_cache(args.raw_dir, args.out, limit=args.limit)
     print(f"\ningest: {report.parsed}/{report.total} notices parsed -> {args.out}")
+    if report.skipped:
+        print(f"skipped {report.skipped} malformed manifest line(s) (mid-scrape?)")
     print(
         f"published: {report.published_min} .. {report.published_max}, "
         f"body chars total: {report.body_chars}"

@@ -2,7 +2,9 @@
 
 Reads the manifest + gzipped cache written by `just scrape`, parses each
 page with parse.parse_notice, and writes one JSON record per notice.
-Unparseable pages are counted in the report, never fatal.
+Unparseable pages are counted in the report, never fatal. A malformed
+manifest line (e.g. a torn trailing line while the scraper is still
+appending) is skipped and counted in report.skipped.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ OPTIONAL_FIELDS = ("updated", "site", "site_detail", "ines_level", "chapo")
 class IngestReport:
     total: int = 0  # manifest lines with status ok/cache_hit
     parsed: int = 0
+    skipped: int = 0  # malformed manifest lines (torn trailing line mid-scrape)
     errors: list[str] = field(default_factory=list)
     missing: Counter[str] = field(default_factory=Counter)
     ines_counts: Counter[int] = field(default_factory=Counter)
@@ -44,7 +47,11 @@ def ingest_cache(
         lines = lines[:limit]
     with out_path.open("w", encoding="utf-8") as out:
         for line in lines:
-            entry = json.loads(line)
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                report.skipped += 1
+                continue
             if entry.get("status") not in ("ok", "cache_hit"):
                 continue
             report.total += 1
