@@ -1,0 +1,56 @@
+[project]
+name = "orphee-rex"
+version = "0.1.0"
+description = "Source-cited RAG over public ASNR data (incident notices, inspection reports, annual reports) on the Mistral stack — cited answers plus a rigorous eval benchmark"
+readme = "README.md"
+authors = [
+    { name = "Vincent Le Meur", email = "vincent.lemeur@protonmail.com" }
+]
+requires-python = ">=3.14"
+# Runtime kept minimal: HTTP + pydantic + numpy.
+dependencies = [
+    "numpy>=2.5.5",
+    "pydantic>=2.14.3",
+    "requests>=2.34.2",
+    "tenacity>=9.2.1",
+    "tqdm>=4.70.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv]
+package = true
+
+[tool.uv.build-backend]
+# Distribution name is "orphee-rex", import package is "orphee" (src/orphee).
+module-name = "orphee"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.ty.src]
+include = ["orphee", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src/orphee"]
+
+[tool.coverage.report]
+show_missing = true
+
+[dependency-groups]
+dev = [
+    "prek>=0.5.10",
+    "pytest>=9.2.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.17.3",
+    "ty>=0.0.97",
+]
