@@ -18,6 +18,7 @@ import logging
 from pathlib import Path
 
 from orphee.data.chunk import DEFAULT_MAX_CHARS, DEFAULT_OVERLAP_CHARS, chunk_corpus
+from orphee.env import load_env
 
 
 def main() -> None:
@@ -31,6 +32,7 @@ def main() -> None:
     parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS)
     parser.add_argument("--overlap-chars", type=int, default=DEFAULT_OVERLAP_CHARS)
     args = parser.parse_args()
+    load_env()  # .env at project root, if present
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
     paths = sorted(Path(args.interim_dir).glob("*.jsonl"))

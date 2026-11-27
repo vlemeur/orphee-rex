@@ -21,6 +21,7 @@ import logging
 from pathlib import Path
 
 from orphee import crawl, sources
+from orphee.env import load_env
 from orphee.net import robots
 from orphee.net.http import HttpClient
 from orphee.sources import SourceSpec
@@ -93,6 +94,7 @@ def main() -> None:
         help="max paginated listing pages to crawl (listing-mode sources only)",
     )
     args = parser.parse_args()
+    load_env()  # .env at project root, if present
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
     specs = sources.resolve_sources(args.source)

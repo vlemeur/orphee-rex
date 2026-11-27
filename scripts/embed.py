@@ -20,6 +20,7 @@ import numpy as np
 
 from orphee.data.chunk import load_chunks
 from orphee.embed import make_embedder
+from orphee.env import load_env
 
 
 def main() -> None:
@@ -29,6 +30,7 @@ def main() -> None:
     parser.add_argument("--out", default="data/processed/embeddings-mistral.npy")
     parser.add_argument("--limit", type=int, default=None, help="max chunks to embed")
     args = parser.parse_args()
+    load_env()  # .env at project root, if present
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
     chunks = load_chunks(args.chunks)

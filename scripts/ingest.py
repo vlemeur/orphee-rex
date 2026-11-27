@@ -18,6 +18,7 @@ import logging
 
 from orphee import sources
 from orphee.data.ingest import ingest_cache
+from orphee.env import load_env
 from orphee.sources import SourceSpec
 
 
@@ -64,6 +65,7 @@ def main() -> None:
         "--limit", type=int, default=None, help="max cached pages to read per source"
     )
     args = parser.parse_args()
+    load_env()  # .env at project root, if present
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
     specs = sources.resolve_sources(args.source)
