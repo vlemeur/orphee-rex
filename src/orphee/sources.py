@@ -125,3 +125,16 @@ SOURCES: dict[str, SourceSpec] = {
         INDUSTRIAL_INCIDENTS,
     )
 }
+
+ALL_SOURCES = "all"
+
+
+def resolve_sources(name: str) -> list[SourceSpec]:
+    """Resolve a --source value: 'all' (the CLI default) or one source name."""
+    if name == ALL_SOURCES:
+        return list(SOURCES.values())
+    if name in SOURCES:
+        return [SOURCES[name]]
+    raise ValueError(
+        f"unknown source: {name!r} (expected 'all' or one of {sorted(SOURCES)})"
+    )

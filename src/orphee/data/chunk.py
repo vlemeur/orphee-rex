@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import TypeAdapter
+from tqdm import tqdm
 
 from orphee.data.models import AsnrDocument, AsnrDocumentUnion, Chunk
 
@@ -160,11 +161,18 @@ def chunk_corpus(
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     report = ChunkReport(max_chars=max_chars, overlap_chars=overlap_chars)
+    paths = list(interim_paths)
+
+    def nonempty_lines(path: Path) -> list[str]:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        return [ln for ln in lines if ln.strip()]
+
+    total = sum(len(nonempty_lines(p)) for p in paths)
     with out_path.open("w", encoding="utf-8") as out:
-        for path in interim_paths:
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if not line.strip():
-                    continue
+        pbar = tqdm(total=total, desc="chunk", unit="doc")
+        for path in paths:
+            for line in nonempty_lines(path):
+                pbar.update(1)
                 try:
                     doc = _adapter.validate_json(line)
                 except Exception:
@@ -177,6 +185,7 @@ def chunk_corpus(
                 for chunk in chunk_document(doc, max_chars, overlap_chars):
                     out.write(chunk.model_dump_json() + "\n")
                     report.chunks += 1
+        pbar.close()
     return report
 
 

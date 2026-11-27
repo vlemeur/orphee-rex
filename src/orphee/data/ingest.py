@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from tqdm import tqdm
+
 from orphee.data import parse as html_parse
 from orphee.data.models import AsnrDocument, ControlArticle
 from orphee.data.parse import ParseError
@@ -102,7 +104,7 @@ def ingest_cache(
     if limit is not None:
         entries = entries[:limit]
     with out_path.open("w", encoding="utf-8") as out:
-        for url, key in entries:
+        for url, key in tqdm(entries, desc=f"ingest {source or 'docs'}", unit="doc"):
             report.total += 1
             gz = cache_dir / f"{key}.gz"
             try:

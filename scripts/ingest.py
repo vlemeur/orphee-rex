@@ -3,9 +3,11 @@
 Thin CLI over src/orphee/data/ingest.py: reads the cache under
 data/raw/asnr/<source>/cache (written document-per-document by `just scrape`)
 and writes one JSON record per document to data/interim/<source>.jsonl.
-Safe to run mid-scrape.
+Safe to run mid-scrape. With no --source, every registered source is ingested
+in turn.
 Examples:
-    uv run python scripts/ingest.py --limit 200
+    uv run python scripts/ingest.py --limit 200   # smoke, per source
+    uv run python scripts/ingest.py                # all sources
     uv run python scripts/ingest.py --source inspection_letters_inb
 """
 
@@ -16,33 +18,20 @@ import logging
 
 from orphee import sources
 from orphee.data.ingest import ingest_cache
+from orphee.sources import SourceSpec
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--source", choices=sorted(sources.SOURCES), default="incident_notices"
-    )
-    parser.add_argument(
-        "--raw-dir", default=None, help="default data/raw/asnr/<source>"
-    )
-    parser.add_argument(
-        "--out", default=None, help="default data/interim/<source>.jsonl"
-    )
-    parser.add_argument(
-        "--limit", type=int, default=None, help="max cached pages to read"
-    )
-    args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-
-    spec = sources.SOURCES[args.source]
+def _ingest_source(spec: SourceSpec, args: argparse.Namespace) -> None:
     raw_dir = args.raw_dir or f"data/raw/asnr/{spec.name}"
     out = args.out or f"data/interim/{spec.name}.jsonl"
     url_prefix = spec.base + spec.notice_path_prefix
     report = ingest_cache(
         raw_dir, out, limit=args.limit, url_prefix=url_prefix, source=spec.name
     )
-    print(f"\ningest: {report.parsed}/{report.total} documents parsed -> {out}")
+    print(
+        f"\ningest {spec.name}: {report.parsed}/{report.total} documents "
+        f"parsed -> {out}"
+    )
     if report.skipped:
         print(f"skipped {report.skipped} unreadable cache sidecar(s) (mid-scrape?)")
     print(
@@ -56,6 +45,32 @@ def main() -> None:
         print(f"  error: {err}")
     if len(report.errors) > 10:
         print(f"  ... and {len(report.errors) - 10} more")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--source",
+        default=sources.ALL_SOURCES,
+        help="'all' (default) or one of: " + ", ".join(sorted(sources.SOURCES)),
+    )
+    parser.add_argument(
+        "--raw-dir", default=None, help="default data/raw/asnr/<source>"
+    )
+    parser.add_argument(
+        "--out", default=None, help="default data/interim/<source>.jsonl"
+    )
+    parser.add_argument(
+        "--limit", type=int, default=None, help="max cached pages to read per source"
+    )
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+    specs = sources.resolve_sources(args.source)
+    if len(specs) > 1 and (args.raw_dir or args.out):
+        parser.error("--raw-dir/--out require a single --source")
+    for spec in specs:
+        _ingest_source(spec, args)
 
 
 if __name__ == "__main__":

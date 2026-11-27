@@ -9,7 +9,9 @@ a page without a title, publication date or body raises ParseError.
 
 from __future__ import annotations
 
+import difflib
 import re
+import unicodedata
 from datetime import date
 from typing import Any, TypeVar
 
@@ -52,26 +54,48 @@ def parse_fr_date(s: str) -> date:
     return date(int(year), int(month), int(day))
 
 
+def _fold_accents(s: str) -> str:
+    """Lowercase + strip diacritics: PDF extraction sometimes drops accents
+    (verified on real letters: 'août' extracted as 'aout')."""
+    nfkd = unicodedata.normalize("NFKD", s)
+    return "".join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+
 FR_MONTHS = {
-    "janvier": 1,
-    "février": 2,
-    "mars": 3,
-    "avril": 4,
-    "mai": 5,
-    "juin": 6,
-    "juillet": 7,
-    "août": 8,
-    "septembre": 9,
-    "octobre": 10,
-    "novembre": 11,
-    "décembre": 12,
+    _fold_accents(name): num
+    for name, num in {
+        "janvier": 1,
+        "février": 2,
+        "mars": 3,
+        "avril": 4,
+        "mai": 5,
+        "juin": 6,
+        "juillet": 7,
+        "août": 8,
+        "septembre": 9,
+        "octobre": 10,
+        "novembre": 11,
+        "décembre": 12,
+    }.items()
 }
 
 
 def parse_fr_date_text(day: str, month: str, year: str) -> date:
-    """Parse a French date written out: '27'/'1er', 'février', '2025'."""
+    """Parse a French date written out: '27'/'1er', 'février'/'fevrier', '2025'.
+
+    PDF extraction can mangle the month (verified on real letters: 'août' as
+    'aout', 'juillet' as 'juilet'), so after accent folding a fuzzy match
+    against the month names is used; an unrecognised month raises ParseError
+    (counted as an ingest error, never a crash).
+    """
     day_num = int(re.sub(r"[^\d]", "", day))
-    return date(int(year), FR_MONTHS[month.strip().lower()], day_num)
+    key = _fold_accents(month.strip())
+    if key not in FR_MONTHS:
+        close = difflib.get_close_matches(key, FR_MONTHS.keys(), n=1, cutoff=0.75)
+        if not close:
+            raise ParseError(f"unknown month: {month!r}")
+        key = close[0]
+    return date(int(year), FR_MONTHS[key], day_num)
 
 
 def _article_fields(html: str, url: str) -> dict[str, Any]:
