@@ -9,15 +9,16 @@ the eval cutoff.
 from __future__ import annotations
 
 from datetime import date
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, Field, computed_field
 
 
 class AsnrDocument(BaseModel):
     """Common fields of every scraped ASNR document (HTML article or PDF)."""
 
     id: str  # URL slug, or PDF file stem (e.g. INSSN-CAE-2025-0257)
+    source: str
     url: str
     title: str
     published: date
@@ -37,7 +38,6 @@ class ControlArticle(AsnrDocument):
     on the INES scale (INB and transports — not patients).
     """
 
-    source: str
     site: str | None = None
     site_detail: str | None = None
     chapo: str | None = None
@@ -97,3 +97,38 @@ class InspectionLetter(AsnrDocument):
     site_detail: str | None = None
     pdf_pages: int
     body: str  # full text extracted from the PDF
+
+
+class Chunk(BaseModel):
+    """One embeddable chunk of an ASNR document, with its citation metadata.
+
+    ``max_freshness`` is copied from the source document (anti-leakage): the
+    eval pipeline must never retrieve a chunk whose max_freshness is after the
+    eval cutoff.
+    """
+
+    chunk_id: str  # "<doc_id>#<chunk_index>"
+    doc_id: str
+    source: str
+    url: str
+    title: str
+    published: date
+    max_freshness: date
+    chunk_index: int
+    n_chunks: int
+    text: str
+    n_chars: int
+
+
+# Discriminated union over the "source" literal — validates any interim JSONL line.
+_ArticleTypes = (
+    IncidentNotice
+    | OutageNotice
+    | MedicalIncidentNotice
+    | PatientRadiotherapyIncidentNotice
+    | IndustrialIncidentNotice
+)
+AsnrDocumentUnion = Annotated[
+    _ArticleTypes | InspectionLetter,
+    Field(discriminator="source"),
+]
