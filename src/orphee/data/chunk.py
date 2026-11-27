@@ -1,8 +1,10 @@
 """Chunk parsed ASNR documents into embeddable units (offline).
 
-Token counts are approximated at ~4 characters per token (French text, no
-tokenizer dependency); chunk sizes are approximate by design — the retrieval
-eval measures what actually matters (recall@k).
+Chunks are sized in CHARACTERS, not tokens: mistral-embed's tokenizer is not
+publicly exposed (mistral-common ships chat-model tokenizers only), and its
+input window is 8192 tokens — far above our chunk sizes, so exact token
+counting has no functional impact. 2000 chars ≈ 500 tokens for French text
+(~4 chars/token); the retrieval eval (recall@k) measures what matters.
 
 Before chunking, ``clean_for_chunking`` removes verified boilerplate: lone
 "."/"INES"/"Lightbox" lines (parsing/tooltip artefacts in HTML bodies) and,
@@ -12,7 +14,7 @@ a parsed field). The interim JSONL stays the raw source of truth; cleaning
 only applies to chunk text.
 
 Chunking strategy: split on blank lines into paragraphs, greedily pack
-paragraphs up to ``max_tokens``, keep an ``overlap_tokens`` tail of the
+paragraphs up to ``max_chars``, keep an ``overlap_chars`` tail of the
 previous chunk when starting a new one, and hard-split paragraphs longer than
 a full chunk into sliding windows with the same overlap. Every chunk keeps
 its citation metadata, including ``max_freshness`` (anti-leakage).
@@ -21,7 +23,6 @@ its citation metadata, including ``max_freshness`` (anti-leakage).
 from __future__ import annotations
 
 import json
-import math
 import re
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
@@ -31,9 +32,10 @@ from pydantic import TypeAdapter
 
 from orphee.data.models import AsnrDocument, AsnrDocumentUnion, Chunk
 
-CHARS_PER_TOKEN = 4
-DEFAULT_MAX_TOKENS = 500
-DEFAULT_OVERLAP_TOKENS = 100
+# Rough conversion only used to pick defaults: French text ≈ 4 chars/token.
+APPROX_CHARS_PER_TOKEN = 4
+DEFAULT_MAX_CHARS = 500 * APPROX_CHARS_PER_TOKEN  # 2000 chars ≈ 500 tokens
+DEFAULT_OVERLAP_CHARS = 100 * APPROX_CHARS_PER_TOKEN  # 400 chars ≈ 100 tokens
 
 _adapter = TypeAdapter(AsnrDocumentUnion)
 
@@ -67,14 +69,10 @@ def clean_for_chunking(text: str, source: str) -> str:
     return "\n".join(out)
 
 
-def approx_tokens(text: str) -> int:
-    return max(1, math.ceil(len(text) / CHARS_PER_TOKEN))
-
-
-def chunk_text(text: str, max_tokens: int, overlap_tokens: int) -> list[str]:
-    """Split text into chunks of ~max_tokens (approx), with overlap."""
-    max_chars = max(1, max_tokens) * CHARS_PER_TOKEN
-    overlap_chars = min(max(0, overlap_tokens) * CHARS_PER_TOKEN, max_chars // 2)
+def chunk_text(text: str, max_chars: int, overlap_chars: int) -> list[str]:
+    """Split text into chunks of at most ~max_chars, with overlap_chars overlap."""
+    max_chars = max(1, max_chars)
+    overlap_chars = min(max(0, overlap_chars), max_chars // 2)
     paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
     if not paragraphs:
         paragraphs = [line.strip() for line in text.splitlines() if line.strip()]
@@ -109,12 +107,12 @@ def chunk_text(text: str, max_tokens: int, overlap_tokens: int) -> list[str]:
 
 def chunk_document(
     doc: AsnrDocument,
-    max_tokens: int = DEFAULT_MAX_TOKENS,
-    overlap_tokens: int = DEFAULT_OVERLAP_TOKENS,
+    max_chars: int = DEFAULT_MAX_CHARS,
+    overlap_chars: int = DEFAULT_OVERLAP_CHARS,
 ) -> list[Chunk]:
     """One document -> its chunks, carrying citation + anti-leakage metadata."""
     body = clean_for_chunking(doc.body, doc.source)
-    texts = chunk_text(body, max_tokens, overlap_tokens)
+    texts = chunk_text(body, max_chars, overlap_chars)
     n = len(texts)
     return [
         Chunk(
@@ -148,20 +146,20 @@ class ChunkReport:
     chunks: int = 0
     skipped: int = 0  # unreadable lines
     cleaned_lines: int = 0
-    max_tokens: int = DEFAULT_MAX_TOKENS
-    overlap_tokens: int = DEFAULT_OVERLAP_TOKENS
+    max_chars: int = DEFAULT_MAX_CHARS
+    overlap_chars: int = DEFAULT_OVERLAP_CHARS
 
 
 def chunk_corpus(
     interim_paths: Iterable[Path],
     out_path: Path | str,
-    max_tokens: int = DEFAULT_MAX_TOKENS,
-    overlap_tokens: int = DEFAULT_OVERLAP_TOKENS,
+    max_chars: int = DEFAULT_MAX_CHARS,
+    overlap_chars: int = DEFAULT_OVERLAP_CHARS,
 ) -> ChunkReport:
     """Chunk every document of the interim files into out_path (JSONL)."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    report = ChunkReport(max_tokens=max_tokens, overlap_tokens=overlap_tokens)
+    report = ChunkReport(max_chars=max_chars, overlap_chars=overlap_chars)
     with out_path.open("w", encoding="utf-8") as out:
         for path in interim_paths:
             for line in path.read_text(encoding="utf-8").splitlines():
@@ -176,7 +174,7 @@ def chunk_corpus(
                 report.cleaned_lines += len(doc.body.splitlines()) - len(
                     clean_for_chunking(doc.body, doc.source).splitlines()
                 )
-                for chunk in chunk_document(doc, max_tokens, overlap_tokens):
+                for chunk in chunk_document(doc, max_chars, overlap_chars):
                     out.write(chunk.model_dump_json() + "\n")
                     report.chunks += 1
     return report

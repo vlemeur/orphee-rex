@@ -4,7 +4,6 @@ from datetime import date
 from pathlib import Path
 
 from orphee.data.chunk import (
-    approx_tokens,
     chunk_corpus,
     chunk_document,
     chunk_text,
@@ -23,12 +22,6 @@ def _notice(body: str) -> IncidentNotice:
         updated=date(2021, 6, 1),
         body=body,
     )
-
-
-def test_approx_tokens() -> None:
-    assert approx_tokens("") == 1
-    assert approx_tokens("abcd") == 1
-    assert approx_tokens("a" * 400) == 100
 
 
 def test_clean_removes_html_and_parsing_artefacts() -> None:
@@ -69,11 +62,11 @@ def test_clean_keeps_letterhead_noise_in_non_letter_sources() -> None:
 
 
 def test_chunk_text_short_body_single_chunk() -> None:
-    assert chunk_text("Un petit paragraphe.", 500, 100) == ["Un petit paragraphe."]
+    assert chunk_text("Un petit paragraphe.", 2000, 400) == ["Un petit paragraphe."]
 
 
 def test_chunk_text_hard_splits_long_paragraph_with_overlap() -> None:
-    chunks = chunk_text("a" * 1000, max_tokens=50, overlap_tokens=10)  # 200/40 chars
+    chunks = chunk_text("a" * 1000, max_chars=200, overlap_chars=40)
     assert len(chunks) == 6
     assert all(len(c) <= 200 for c in chunks)
     assert chunks[0] == "a" * 200
@@ -82,14 +75,14 @@ def test_chunk_text_hard_splits_long_paragraph_with_overlap() -> None:
 
 def test_chunk_text_packs_paragraphs_until_limit() -> None:
     paras = "\n\n".join(f"paragraphe {i} " + "x" * 100 for i in range(10))
-    chunks = chunk_text(paras, max_tokens=50, overlap_tokens=0)  # 200 chars max
+    chunks = chunk_text(paras, max_chars=200, overlap_chars=0)
     assert len(chunks) > 1
     assert sum(c.count("paragraphe") for c in chunks) >= 10
 
 
 def test_chunk_document_carries_metadata_and_max_freshness() -> None:
     doc = _notice("corps\n\n" + "mot " * 600)
-    chunks = chunk_document(doc, max_tokens=100, overlap_tokens=10)
+    chunks = chunk_document(doc, max_chars=400, overlap_chars=40)
     assert len(chunks) > 1
     for i, c in enumerate(chunks):
         assert isinstance(c, Chunk)

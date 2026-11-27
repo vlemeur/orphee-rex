@@ -55,7 +55,8 @@ scrape *args:
 ingest *args:
     uv run --locked python scripts/ingest.py {{args}}
 
-# Chunk the interim JSONL into embeddable chunks (offline: boilerplate cleaned)
-# e.g. just chunk --max-tokens 300 --overlap 50
+# Chunk the interim JSONL into embeddable chunks (offline: boilerplate cleaned).
+# Sized in chars: 2000 chars ≈ 500 tokens (mistral-embed, 8192-token window).
+# e.g. just chunk --max-chars 1200 --overlap-chars 240
 chunk *args:
     uv run --locked python scripts/chunk.py {{args}}
