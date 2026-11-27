@@ -1,11 +1,12 @@
-"""Ingest the raw ASNR HTML cache into parsed JSONL (offline).
+"""Ingest the raw ASNR cache (HTML pages and PDFs) into parsed JSONL (offline).
 
 Thin CLI over src/orphee/data/ingest.py: reads the cache under
-data/raw/asnr/<source>/cache (written page-per-page by `just scrape`) and
-writes one JSON record per notice to data/interim/. Safe to run mid-scrape.
+data/raw/asnr/<source>/cache (written document-per-document by `just scrape`)
+and writes one JSON record per document to data/interim/<source>.jsonl.
+Safe to run mid-scrape.
 Examples:
     uv run python scripts/ingest.py --limit 200
-    uv run python scripts/ingest.py
+    uv run python scripts/ingest.py --source inspection_letters_inb
 """
 
 from __future__ import annotations
@@ -38,15 +39,18 @@ def main() -> None:
     raw_dir = args.raw_dir or f"data/raw/asnr/{spec.name}"
     out = args.out or f"data/interim/{spec.name}.jsonl"
     url_prefix = spec.base + spec.notice_path_prefix
-    report = ingest_cache(raw_dir, out, limit=args.limit, url_prefix=url_prefix)
-    print(f"\ningest: {report.parsed}/{report.total} notices parsed -> {out}")
+    report = ingest_cache(
+        raw_dir, out, limit=args.limit, url_prefix=url_prefix, source=spec.name
+    )
+    print(f"\ningest: {report.parsed}/{report.total} documents parsed -> {out}")
     if report.skipped:
         print(f"skipped {report.skipped} unreadable cache sidecar(s) (mid-scrape?)")
     print(
         f"published: {report.published_min} .. {report.published_max}, "
         f"body chars total: {report.body_chars}"
     )
-    print(f"INES levels: {dict(sorted(report.ines_counts.items()))}")
+    if report.ines_counts:
+        print(f"INES levels: {dict(sorted(report.ines_counts.items()))}")
     print(f"missing fields: {dict(report.missing)}")
     for err in report.errors[:10]:
         print(f"  error: {err}")

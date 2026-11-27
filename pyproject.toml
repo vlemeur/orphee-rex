@@ -12,6 +12,7 @@ dependencies = [
     "beautifulsoup4>=4.13",
     "numpy>=2.5.5",
     "pydantic>=2.14.3",
+    "pypdf>=7.2.0",
     "requests>=2.34.2",
     "tenacity>=9.2.1",
     "tqdm>=4.70.1",

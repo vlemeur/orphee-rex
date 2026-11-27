@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from orphee.data.ingest import ingest_cache
-from orphee.data.models import IncidentNotice
+from orphee.data.models import IncidentNotice, InspectionLetter
 from orphee.net.http import cache_key
 
 PREFIX = "https://asnr.test/avis/"
@@ -62,3 +62,62 @@ def test_ingest_cache_limit(tmp_path: Path, synthetic_notice_html: str) -> None:
     report = ingest_cache(raw_dir, tmp_path / "out.jsonl", limit=1, url_prefix=PREFIX)
     assert report.total == 1
     assert report.parsed == 1
+
+
+LETTER_URL = (
+    "https://asnr.test/content/download/203064/download_file/INSSN-CAE-2025-0257.pdf"
+)
+
+
+def test_ingest_pdf_source(tmp_path: Path, synthetic_letter_pdf: bytes) -> None:
+    raw_dir = tmp_path / "raw"
+    key = cache_key(LETTER_URL)
+    cache = raw_dir / "cache"
+    cache.mkdir(parents=True)
+    (cache / f"{key}.gz").write_bytes(gzip.compress(synthetic_letter_pdf))
+    (cache / f"{key}.json").write_text(
+        json.dumps(
+            {
+                "url": LETTER_URL,
+                "status": 200,
+                "content_type": "application/pdf",
+                "bytes": len(synthetic_letter_pdf),
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "letters.jsonl"
+    report = ingest_cache(
+        raw_dir,
+        out,
+        url_prefix="https://asnr.test/content/download/",
+        source="inspection_letters_inb",
+    )
+    assert report.total == 1
+    assert report.parsed == 1
+    assert report.published_min is not None
+    assert report.published_min.isoformat() == "2025-02-27"
+    line = out.read_text(encoding="utf-8").splitlines()[0]
+    letter = InspectionLetter.model_validate_json(line)
+    assert letter.reference == "INSSN-CAE-2025-0257"
+    assert letter.division == "CAE"
+    assert letter.pdf_pages == 1
+    assert letter.theme == "la surveillance des activites"
+
+
+def test_ingest_pdf_source_counts_errors(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw"
+    key = cache_key(LETTER_URL)
+    cache = raw_dir / "cache"
+    cache.mkdir(parents=True)
+    (cache / f"{key}.gz").write_bytes(gzip.compress(b"not a pdf at all"))
+    meta = {"url": LETTER_URL, "status": 200, "content_type": "application/pdf"}
+    (cache / f"{key}.json").write_text(json.dumps(meta), encoding="utf-8")
+    report = ingest_cache(
+        raw_dir,
+        tmp_path / "out.jsonl",
+        url_prefix="https://asnr.test/content/download/",
+        source="inspection_letters_inb",
+    )
+    assert report.parsed == 0
+    assert len(report.errors) == 1 and LETTER_URL in report.errors[0]
