@@ -34,6 +34,13 @@ DEFAULT_TIMEOUT_S = 60.0
 # of sleeping: a CI job must never block for hours on a shared-IP quota.
 DEFAULT_MAX_429_WAIT_S = 60.0
 RETRYABLE_STATUS = {500, 502, 503, 504}
+# Transient network-level failures (connection cut mid-stream, DNS hiccup,
+# timeout): retried like 5xx, then surfaced as FetchError.
+TRANSIENT_NETWORK_ERRORS = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+    requests.exceptions.Timeout,
+)
 
 
 class FetchClient(Protocol):
@@ -161,7 +168,12 @@ class HttpClient:
     ) -> requests.Response:
         self._throttle()
         logger.info("fetching: %s", url)
-        resp = self.session.get(url, params=params, timeout=self.timeout_s)
+        try:
+            resp = self.session.get(url, params=params, timeout=self.timeout_s)
+        except TRANSIENT_NETWORK_ERRORS as exc:
+            raise RetryableFetchError(
+                f"network error ({type(exc).__name__}): {url}"
+            ) from exc
         if resp.status_code == 429:
             wait_s = _retry_after_s(resp)
             if wait_s is not None and wait_s > self.max_429_wait_s:

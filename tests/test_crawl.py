@@ -105,6 +105,25 @@ def test_fetch_urls_respects_limit(tmp_path) -> None:
     assert len((tmp_path / "manifest.jsonl").read_text().splitlines()) == 1
 
 
+def test_fetch_urls_never_crashes_on_unexpected_error(tmp_path) -> None:
+    class ExplodingClient(FakeClient):
+        def get(self, url, params=None):
+            if url.endswith("avis-b"):
+                raise RuntimeError("unexpected boom")  # not a FetchError
+            return super().get(url, params)
+
+    urls = ["https://asnr.test/avis/avis-a", "https://asnr.test/avis/avis-b"]
+    summary = crawl.fetch_urls(ExplodingClient(_client().responses), tmp_path, urls)
+    assert summary.fetched == 1
+    assert summary.errors == 1  # the boom is a manifest error line, not a crash
+    lines = [
+        json.loads(line)
+        for line in (tmp_path / "manifest.jsonl").read_text().splitlines()
+    ]
+    assert lines[1]["status"] == "error"
+    assert "RuntimeError" in lines[1]["error"]
+
+
 def test_crawl_source_writes_urls_txt(tmp_path) -> None:
     summary = crawl.crawl_source(_client(), SPEC, tmp_path)
     assert summary.enumerated == 2

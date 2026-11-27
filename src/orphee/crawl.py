@@ -157,8 +157,9 @@ def fetch_urls(
                     body = client.get(url)
                     record.update(status="ok", bytes=len(body))
                     fetched += 1
-                except FetchError as exc:
-                    record.update(status="error", error=str(exc))
+                except Exception as exc:
+                    # a broken page is a manifest error line, never a crash
+                    record.update(status="error", error=f"{type(exc).__name__}: {exc}")
                     errors += 1
                     logger.warning("fetch failed: %s (%s)", url, exc)
             manifest.write(json.dumps(record, ensure_ascii=False) + "\n")

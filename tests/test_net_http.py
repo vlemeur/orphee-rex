@@ -107,3 +107,35 @@ def test_429_within_cap_is_retried(client: HttpClient, monkeypatch) -> None:
     monkeypatch.setattr(client.session, "get", fake_get)
     assert client.get("https://example.test/c") == b"ok"
     assert state["n"] == 2
+
+
+def test_transient_network_error_is_retried_then_succeeds(
+    client: HttpClient, monkeypatch
+) -> None:
+    # e.g. ChunkedEncodingError "Response ended prematurely" mid-PDF (seen live)
+    state = {"n": 0}
+
+    def fake_get(url, params=None, timeout=None):
+        state["n"] += 1
+        if state["n"] == 1:
+            raise requests.exceptions.ChunkedEncodingError("Response ended prematurely")
+        return _response(b"ok")
+
+    monkeypatch.setattr(client.session, "get", fake_get)
+    assert client.get("https://example.test/d") == b"ok"
+    assert state["n"] == 2
+
+
+def test_persistent_network_error_becomes_fetch_error(
+    client: HttpClient, monkeypatch
+) -> None:
+    calls: list[str] = []
+
+    def fake_get(url, params=None, timeout=None):
+        calls.append(url)
+        raise requests.exceptions.ConnectionError("connection reset")
+
+    monkeypatch.setattr(client.session, "get", fake_get)
+    with pytest.raises(FetchError, match="network error"):
+        client.get("https://example.test/e")
+    assert len(calls) == 4  # retried, then surfaced as a permanent FetchError
