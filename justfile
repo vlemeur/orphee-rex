@@ -62,9 +62,8 @@ ingest *args:
 chunk *args:
     uv run --locked python scripts/chunk.py {{args}}
 
-# Embed chunks — backend local (default, offline, 0 EUR, FastEmbed/ONNX) or
-# mistral (La Plateforme API). Every text cached on disk by sha256(model+text),
-# so re-runs only embed the new chunks.
-# e.g. just embed --limit 200   ·   just embed --backend mistral
+# Embed chunks with mistral-embed (La Plateforme API). Every API batch is
+# cached on disk by payload hash, so re-runs only call the API for new chunks.
+# e.g. just embed --limit 200
 embed *args:
     uv run --locked python scripts/embed.py {{args}}

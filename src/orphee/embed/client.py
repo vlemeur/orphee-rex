@@ -1,16 +1,12 @@
-"""Embedders (pluggable backends, disk-cached) + Mistral chat client.
+"""mistral-embed client (La Plateforme API, disk-cached) + Mistral chat client.
 
-Two embedding backends behind the same ``Embedder`` interface, both cached
-per-text on disk (sha256(model + text)) so re-runs only compute new texts:
+``MistralEmbedder`` calls mistral-embed (1024-d, 8192-token input window) via
+La Plateforme, batch by batch, cached per batch payload under
+results/cache/mistral/ — a cache hit never touches the network, so re-runs
+are free. Covered by the Vibe Pro subscription's monthly API credit
+(25.50 EUR/month); the payload cache keeps us well inside it.
 
-- ``FastEmbedLocal`` (default, 0 EUR, offline): local ONNX model via FastEmbed,
-  e.g. Qwen/Qwen3-Embedding-0.6B-Q (1024-d, multilingual, 32k tokens) or
-  intfloat/multilingual-e5-large. The model downloads once from HF on first
-  use (run `just embed` yourself, never in tests).
-- ``MistralEmbedder`` (optional, API): mistral-embed (1024-d) via La Plateforme,
-  ~$0.10/M input tokens, cached per batch payload under results/cache/mistral/.
-
-``MistralChat`` is the chat completion client (RAG generation later), cached by
+``MistralChat`` is the chat completion client (RAG generation), cached by
 payload hash. API key via MISTRAL_API_KEY env / .env — never in code or logs.
 """
 
@@ -18,7 +14,6 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -26,20 +21,13 @@ import numpy as np
 import requests
 from tqdm import tqdm
 
-from orphee.embed.cache import (
-    DEFAULT_API_CACHE_DIR,
-    DEFAULT_EMBED_CACHE_DIR,
-    JsonDiskCache,
-    payload_key,
-    text_key,
-)
+from orphee.embed.cache import DEFAULT_API_CACHE_DIR, JsonDiskCache, payload_key
 
 logger = logging.getLogger(__name__)
 
 API_BASE = "https://api.mistral.ai/v1"
 MISTRAL_EMBED_MODEL = "mistral-embed"  # 1024-d, 8192-token input window
 MISTRAL_EMBED_DIM = 1024
-DEFAULT_LOCAL_MODEL = "Qwen/Qwen3-Embedding-0.6B-Q"  # 1024-d, multilingual, quantized
 DEFAULT_CHAT_MODEL = "mistral-small-latest"
 DEFAULT_TIMEOUT_S = 120.0
 
@@ -59,99 +47,6 @@ class SessionLike(Protocol):
     headers: dict[str, str]
 
     def post(self, url: str, json: dict[str, Any], timeout: float) -> Any: ...
-
-
-class CachedEmbedder:
-    """Wrap a raw compute function with the per-text disk cache + tqdm progress."""
-
-    def __init__(
-        self,
-        name: str,
-        model: str,
-        dim: int,
-        compute: Callable[[list[str]], np.ndarray],
-        cache_dir: Path | str = DEFAULT_EMBED_CACHE_DIR,
-        batch_size: int = 64,
-    ) -> None:
-        self.name = name
-        self.model = model
-        self.dim = dim
-        self.batch_size = batch_size
-        self._compute = compute
-        self.cache = JsonDiskCache(Path(cache_dir) / name)
-
-    def embed(self, texts: list[str]) -> np.ndarray:
-        out: list[list[float] | None] = [None] * len(texts)
-        missing_idx: list[int] = []
-        for i, text in enumerate(texts):
-            cached = self.cache.get(text_key(self.model, text))
-            if cached is not None and "embedding" in cached:
-                out[i] = cached["embedding"]
-            else:
-                missing_idx.append(i)
-        n_cached = len(texts) - len(missing_idx)
-        logger.info(
-            "%s: %d/%d cached, computing %d (model %s)",
-            self.name,
-            n_cached,
-            len(texts),
-            len(missing_idx),
-            self.model,
-        )
-        for start in tqdm(
-            range(0, len(missing_idx), self.batch_size),
-            desc=f"{self.name} embed",
-            unit="batch",
-            total=(len(missing_idx) + self.batch_size - 1) // self.batch_size,
-        ):
-            batch_idx = missing_idx[start : start + self.batch_size]
-            computed = np.asarray(
-                self._compute([texts[i] for i in batch_idx]), dtype=np.float32
-            )
-            if computed.shape != (len(batch_idx), self.dim):
-                raise RuntimeError(
-                    f"{self.name}: expected ({len(batch_idx)}, {self.dim}), "
-                    f"got {computed.shape}"
-                )
-            for j, i in enumerate(batch_idx):
-                vec = computed[j].tolist()
-                out[i] = vec
-                self.cache.put(text_key(self.model, texts[i]), {"embedding": vec})
-        matrix = np.asarray(out, dtype=np.float32)
-        if matrix.size == 0:
-            return np.zeros((0, self.dim), dtype=np.float32)
-        return matrix
-
-
-class FastEmbedLocal:
-    """Local ONNX embedding backend (FastEmbed) — default, offline, 0 EUR."""
-
-    def __init__(
-        self,
-        model: str = DEFAULT_LOCAL_MODEL,
-        cache_dir: Path | str = DEFAULT_EMBED_CACHE_DIR,
-    ) -> None:
-        from fastembed import TextEmbedding  # heavy import, deferred
-
-        self.name = "local"
-        self.model = model
-        self._backend = TextEmbedding(model_name=model)
-        catalog = {m["model"]: m for m in TextEmbedding.list_supported_models()}
-        self.dim = int(catalog.get(model, {}).get("dim", 1024))
-        self._embedder = CachedEmbedder(
-            name=self.name,
-            model=model,
-            dim=self.dim,
-            compute=self._compute,
-            cache_dir=cache_dir,
-        )
-
-    def _compute(self, texts: list[str]) -> np.ndarray:
-        vectors = list(self._backend.embed(texts, batch_size=64))
-        return np.asarray(vectors, dtype=np.float32)
-
-    def embed(self, texts: list[str]) -> np.ndarray:
-        return self._embedder.embed(texts)
 
 
 class MistralEmbedder:
@@ -259,13 +154,8 @@ class MistralChat:
 
 
 def make_embedder(
-    backend: str = "local",
     model: str | None = None,
-    cache_dir: Path | str = DEFAULT_EMBED_CACHE_DIR,
+    cache_dir: Path | str = DEFAULT_API_CACHE_DIR,
 ) -> Embedder:
-    """Factory: backend 'local' (default, offline) or 'mistral' (API)."""
-    if backend == "local":
-        return FastEmbedLocal(model=model or DEFAULT_LOCAL_MODEL, cache_dir=cache_dir)
-    if backend == "mistral":
-        return MistralEmbedder(model=model or MISTRAL_EMBED_MODEL)
-    raise ValueError(f"unknown backend: {backend!r} (expected 'local' or 'mistral')")
+    """Factory: the Mistral API embedder (payload-hash disk-cached)."""
+    return MistralEmbedder(model=model or MISTRAL_EMBED_MODEL, cache_dir=cache_dir)

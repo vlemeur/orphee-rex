@@ -8,9 +8,9 @@ source-cited answers, evaluated end to end.
 Source-cited RAG over public ASNR data — avis d'incident (INB incl. transports,
 médical, industriel), avis d'arrêts de réacteurs (HTML) and lettres de suite
 d'inspection INB (PDF), from reglementation-controle.asnr.fr; annual reports
-next — chat on the Mistral API; embeddings pluggable: local FastEmbed/ONNX by
-default (0 EUR, offline), mistral-embed API optional. Budget: 0 EUR (every API
-call cached on disk by payload hash; every embedding cached per text).
+next — chat and embeddings on the Mistral API (mistral-embed). Budget: 0 EUR
+out of pocket: every API call is cached on disk by payload hash, and the Vibe
+Pro subscription covers the API usage with its monthly credit.
 
 ## Run
 
@@ -20,7 +20,7 @@ just all                 # lint + type-check + tests + prek — the single gate
 just scrape --limit 50   # smoke: all sources, 50 docs each, into the raw cache (network)
 just scrape --source inspection_letters_inb --max-pages 3 --limit 30  # one source only
 just ingest              # raw cache -> parsed JSONL (offline), all sources
-just chunk && just embed # chunks -> embeddings (local backend, offline, 0 EUR)
+just chunk && just embed # chunks -> embeddings (mistral-embed API, cached)
 ```
 
 Scrapable sources (`--source`): `incident_notices` (INB, done — transport

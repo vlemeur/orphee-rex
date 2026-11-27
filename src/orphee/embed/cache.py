@@ -1,7 +1,5 @@
-"""Disk cache for embeddings and Mistral API payloads (budget 0 EUR).
+"""Disk cache for Mistral API payloads (budget 0 EUR).
 
-Embedding cache: results/cache/embeddings/<backend>/<sha256(model+text)>.json
-— one vector per file, so a re-run only computes the missing texts.
 API payload cache: results/cache/mistral/<sha256(payload)>.json — a cache hit
 never touches the network (never re-embedded / never re-chatted by default).
 """
@@ -13,12 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-DEFAULT_EMBED_CACHE_DIR = "results/cache/embeddings"
 DEFAULT_API_CACHE_DIR = "results/cache/mistral"
-
-
-def text_key(model: str, text: str) -> str:
-    return hashlib.sha256(f"{model}\x00{text}".encode()).hexdigest()
 
 
 def payload_key(payload: dict[str, Any]) -> str:
