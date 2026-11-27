@@ -106,7 +106,7 @@ def enumerate_urls(
     if spec.doc_url_regex is not None:
         return enumerate_listing_urls(client, spec, max_pages=max_listing_pages)
     urls, children = _sitemap_locs(client.get_text(f"{spec.base}/sitemap.xml"))
-    for child in children[:max_sitemaps]:
+    for child in tqdm(children[:max_sitemaps], desc="sitemaps", unit="sitemap"):
         child_urls, _ = _sitemap_locs(client.get_text(child))
         urls.extend(child_urls)
     listing = spec.base + spec.listing_path

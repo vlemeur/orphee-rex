@@ -4,10 +4,12 @@ Thin CLI over src/orphee/crawl.py + src/orphee/net. Full histories: incident
 notices ~3.2k HTML pages, inspection letters ~18k PDFs behind ~1.2k listing
 pages; at the robots.txt Crawl-delay (10 s) a full run takes hours — it is
 resumable (disk cache + manifest), so run it in the background:
-    nohup just scrape --source inspection_letters_inb > /tmp/orphee-scrape.log 2>&1 &
+    nohup just scrape > /tmp/orphee-scrape.log 2>&1 &
+With no --source, every registered source is scraped in turn (resumable per
+source: already-cached pages are free).
 Examples:
-    uv run python scripts/scrape.py --limit 50    # smoke
-    uv run python scripts/scrape.py               # full history
+    uv run python scripts/scrape.py --limit 50    # smoke, 50 docs per source
+    uv run python scripts/scrape.py               # full history, all sources
     uv run python scripts/scrape.py --source inspection_letters_inb \
         --max-pages 3 --limit 20   # smoke on the letters listing
 """
@@ -19,40 +21,15 @@ import logging
 from pathlib import Path
 
 from orphee import crawl, sources
+from orphee.env import load_env
 from orphee.net import robots
 from orphee.net.http import HttpClient
+from orphee.sources import SourceSpec
 
 logger = logging.getLogger(__name__)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--source", choices=sorted(sources.SOURCES), default="incident_notices"
-    )
-    parser.add_argument(
-        "--raw-dir", default=None, help="default data/raw/asnr/<source>"
-    )
-    parser.add_argument("--cache-dir", default=None, help="default <raw-dir>/cache")
-    parser.add_argument(
-        "--limit", type=int, default=None, help="max documents to fetch"
-    )
-    parser.add_argument(
-        "--delay",
-        type=float,
-        default=None,
-        help="seconds between requests (default: robots.txt Crawl-delay)",
-    )
-    parser.add_argument(
-        "--max-pages",
-        type=int,
-        default=None,
-        help="max paginated listing pages to crawl (listing-mode sources only)",
-    )
-    args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
-
-    spec = sources.SOURCES[args.source]
+def _scrape_source(spec: SourceSpec, args: argparse.Namespace) -> None:
     raw_dir = Path(args.raw_dir or f"data/raw/asnr/{spec.name}")
     cache_dir = Path(args.cache_dir or raw_dir / "cache")
 
@@ -83,11 +60,48 @@ def main() -> None:
     client = HttpClient(cache_dir=cache_dir, min_interval_s=delay)
     summary = crawl.fetch_urls(client, raw_dir, urls, limit=args.limit)
     print(
-        f"\n{args.source}: {summary.enumerated} urls enumerated, "
+        f"\n{spec.name}: {summary.enumerated} urls enumerated, "
         f"{summary.fetched} fetched, {summary.cache_hits} cache hits, "
         f"{summary.errors} errors in {summary.elapsed_s:.0f}s"
     )
     print(f"raw cache: {cache_dir} · manifest: {raw_dir / 'manifest.jsonl'}")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--source",
+        default=sources.ALL_SOURCES,
+        help="'all' (default) or one of: " + ", ".join(sorted(sources.SOURCES)),
+    )
+    parser.add_argument(
+        "--raw-dir", default=None, help="default data/raw/asnr/<source>"
+    )
+    parser.add_argument("--cache-dir", default=None, help="default <raw-dir>/cache")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="max documents to fetch per source"
+    )
+    parser.add_argument(
+        "--delay",
+        type=float,
+        default=None,
+        help="seconds between requests (default: robots.txt Crawl-delay)",
+    )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=None,
+        help="max paginated listing pages to crawl (listing-mode sources only)",
+    )
+    args = parser.parse_args()
+    load_env()  # .env at project root, if present
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+
+    specs = sources.resolve_sources(args.source)
+    if len(specs) > 1 and (args.raw_dir or args.cache_dir):
+        parser.error("--raw-dir/--cache-dir require a single --source")
+    for spec in specs:
+        _scrape_source(spec, args)
 
 
 if __name__ == "__main__":

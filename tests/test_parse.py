@@ -7,6 +7,7 @@ import pytest
 from orphee.data.models import IncidentNotice, MedicalIncidentNotice, OutageNotice
 from orphee.data.parse import (
     ParseError,
+    parse_fr_date_text,
     parse_medical_notice,
     parse_notice,
     parse_outage,
@@ -120,3 +121,26 @@ def test_parse_medical_notice_without_ines(synthetic_notice_html: str) -> None:
     assert notice.source == "asnr-medical-incident-notice"
     assert notice.ines_level is None
     assert notice.max_freshness == notice.updated
+
+
+def test_parse_fr_date_text_accented_months() -> None:
+    assert parse_fr_date_text("27", "août", "2025") == date(2025, 8, 27)
+    assert parse_fr_date_text("1er", "février", "2026") == date(2026, 2, 1)
+    assert parse_fr_date_text("31", "décembre", "2024") == date(2024, 12, 31)
+
+
+def test_parse_fr_date_text_unaccented_months_from_pdf() -> None:
+    # Real letters crash here before the fix: pypdf extracted "aout" (KeyError).
+    assert parse_fr_date_text("27", "aout", "2025") == date(2025, 8, 27)
+    assert parse_fr_date_text("3", "fevrier", "2026") == date(2026, 2, 3)
+    assert parse_fr_date_text("9", "decembre", "2025") == date(2025, 12, 9)
+
+
+def test_parse_fr_date_text_mangled_month_from_pdf() -> None:
+    # Real letter crash before the fix: pypdf extracted "juillet" as "juilet".
+    assert parse_fr_date_text("8", "juilet", "2025") == date(2025, 7, 8)
+
+
+def test_parse_fr_date_text_unknown_month_raises_parse_error() -> None:
+    with pytest.raises(ParseError, match="unknown month"):
+        parse_fr_date_text("8", "xxyy", "2025")
