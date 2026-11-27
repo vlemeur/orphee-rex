@@ -43,7 +43,7 @@ all:
 
 # Scrape public ASNR sources into the local raw cache (network, rate-limited,
 # resumable via cache + manifest). Sources: incident_notices (INB, done),
-# reactor_outages, transport/medical/patient/industrial_incidents (HTML),
+# reactor_outages, medical/patient/industrial_incidents (HTML),
 # inspection_letters_inb (PDFs via paginated listing).
 # e.g. just scrape --limit 50   (smoke)   ·   just scrape --source <name>
 # (full history, hours at the robots.txt Crawl-delay — run in background)

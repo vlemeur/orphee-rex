@@ -22,7 +22,6 @@ from orphee.data.models import (
     MedicalIncidentNotice,
     OutageNotice,
     PatientRadiotherapyIncidentNotice,
-    TransportIncidentNotice,
 )
 
 DATE_RE = re.compile(r"\d{2}/\d{2}/\d{4}")
@@ -70,8 +69,9 @@ FR_MONTHS = {
 
 
 def parse_fr_date_text(day: str, month: str, year: str) -> date:
-    """Parse a French date written out: '27', 'février', '2025'."""
-    return date(int(year), FR_MONTHS[month.strip().lower()], int(day))
+    """Parse a French date written out: '27'/'1er', 'février', '2025'."""
+    day_num = int(re.sub(r"[^\d]", "", day))
+    return date(int(year), FR_MONTHS[month.strip().lower()], day_num)
 
 
 def _article_fields(html: str, url: str) -> dict[str, Any]:
@@ -146,10 +146,6 @@ def _build[T: ControlArticle](
 def parse_notice(html: str, url: str) -> IncidentNotice:
     """Parse one avis d'incident INB page."""
     return _build(IncidentNotice, html, url)
-
-
-def parse_transport_notice(html: str, url: str) -> TransportIncidentNotice:
-    return _build(TransportIncidentNotice, html, url)
 
 
 def parse_medical_notice(html: str, url: str) -> MedicalIncidentNotice:

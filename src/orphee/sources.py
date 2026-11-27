@@ -70,27 +70,11 @@ INSPECTION_LETTERS_INB = SourceSpec(
     listing_max_pages=5000,
 )
 
-TRANSPORT_INCIDENTS = SourceSpec(
-    name="transport_incidents",
-    base=ASNR_BASE,
-    listing_path=(
-        _CONTROLE + "/transport-de-substances-radioactives"
-        "/avis-d-incident-pour-des-transports-lies-aux-installations-nucleaires"
-    ),
-    notice_path_prefix=(
-        _CONTROLE + "/transport-de-substances-radioactives"
-        "/avis-d-incident-pour-des-transports-lies-aux-installations-nucleaires/"
-    ),
-    rss_path=None,
-    default_crawl_delay_s=10.0,
-    # the individual notices are NOT in the sitemap (only the listing page is):
-    # enumerate by crawling the paginated listing and matching the prefix.
-    doc_url_regex=(
-        r"/transport-de-substances-radioactives"
-        r"/avis-d-incident-pour-des-transports-lies-aux-installations-nucleaires"
-        r"/[^/?]+$"
-    ),
-)
+# NOTE: there is no separate "transport incidents" source: the transport
+# listing (transport-de-substances-radioactives/...) is only a filtered VIEW
+# whose items are hosted under avis-d-incident-des-installations-nucleaires/
+# (verified on the real listing HTML) — i.e. already covered by
+# INCIDENT_NOTICES. The RSS avis-incidents-transports likewise republishes them.
 
 MEDICAL_INCIDENTS = SourceSpec(
     name="medical_incidents",
@@ -136,7 +120,6 @@ SOURCES: dict[str, SourceSpec] = {
         INCIDENT_NOTICES,
         REACTOR_OUTAGES,
         INSPECTION_LETTERS_INB,
-        TRANSPORT_INCIDENTS,
         MEDICAL_INCIDENTS,
         PATIENT_RADIOTHERAPY_INCIDENTS,
         INDUSTRIAL_INCIDENTS,

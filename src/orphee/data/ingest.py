@@ -43,7 +43,6 @@ OPTIONAL_FIELDS = (
 HTML_PARSERS: dict[str, Callable[[str, str], ControlArticle]] = {
     "incident_notices": html_parse.parse_notice,
     "reactor_outages": html_parse.parse_outage,
-    "transport_incidents": html_parse.parse_transport_notice,
     "medical_incidents": html_parse.parse_medical_notice,
     "patient_radiotherapy_incidents": html_parse.parse_patient_radiotherapy_notice,
     "industrial_incidents": html_parse.parse_industrial_notice,

@@ -51,12 +51,6 @@ class IncidentNotice(ControlArticle):
     source: Literal["asnr-incident-notice"] = "asnr-incident-notice"
 
 
-class TransportIncidentNotice(ControlArticle):
-    """Avis d'incident pour un transport lié aux installations nucléaires."""
-
-    source: Literal["asnr-transport-incident-notice"] = "asnr-transport-incident-notice"
-
-
 class MedicalIncidentNotice(ControlArticle):
     """Avis d'incident du domaine médical (ESR de radioprotection)."""
 
