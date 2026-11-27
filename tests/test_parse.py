@@ -4,8 +4,13 @@ from datetime import date
 
 import pytest
 
-from orphee.data.models import IncidentNotice
-from orphee.data.parse import ParseError, parse_notice
+from orphee.data.models import IncidentNotice, MedicalIncidentNotice, OutageNotice
+from orphee.data.parse import (
+    ParseError,
+    parse_medical_notice,
+    parse_notice,
+    parse_outage,
+)
 
 URL = (
     "https://reglementation-controle.asnr.fr/controle/actualites-du-controle"
@@ -73,3 +78,45 @@ def test_model_json_roundtrip(synthetic_notice_html: str) -> None:
     assert "max_freshness" in notice.model_dump()
     back = IncidentNotice.model_validate_json(notice.model_dump_json())
     assert back == notice
+
+
+OUTAGE_URL = (
+    "https://reglementation-controle.asnr.fr/controle/actualites-du-controle"
+    "/installations-nucleaires/arret-de-reacteurs-de-centrales-nucleaires"
+    "/arret-pour-visite-partielle-du-reacteur-12"
+)
+
+
+def test_parse_outage_extracts_reactor_and_kind(synthetic_outage_html: str) -> None:
+    notice = parse_outage(synthetic_outage_html, OUTAGE_URL)
+    assert isinstance(notice, OutageNotice)
+    assert notice.source == "asnr-reactor-outage-notice"
+    assert notice.id == "arret-pour-visite-partielle-du-reacteur-12"
+    assert notice.reactor == "réacteur 1"
+    assert notice.outage_kind == "visite partielle"
+    assert notice.site == "Centrale nucléaire de Gravelines"
+    assert notice.site_detail == "Réacteurs de 900 MWe - EDF"
+    assert notice.published == date(2026, 5, 4)
+    assert notice.ines_level is None  # outage notices carry no INES block
+    assert "arrêté pour" in notice.body
+
+
+def test_parse_outage_reactor_with_numero_sign(synthetic_outage_html: str) -> None:
+    html = synthetic_outage_html.replace(
+        "Arrêt pour visite partielle du réacteur 1",
+        "Arrêt pour visite décennale du réacteur n° 3",
+    )
+    notice = parse_outage(html, OUTAGE_URL)
+    assert notice.reactor == "réacteur 3"
+    assert notice.outage_kind == "visite décennale"
+
+
+def test_parse_medical_notice_without_ines(synthetic_notice_html: str) -> None:
+    html = synthetic_notice_html.replace(
+        '<p class="AsideBlock-incident-level">Niveau 2</p>', ""
+    )
+    notice = parse_medical_notice(html, URL)
+    assert isinstance(notice, MedicalIncidentNotice)
+    assert notice.source == "asnr-medical-incident-notice"
+    assert notice.ines_level is None
+    assert notice.max_freshness == notice.updated

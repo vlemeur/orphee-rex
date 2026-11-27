@@ -113,3 +113,72 @@ def test_crawl_source_writes_urls_txt(tmp_path) -> None:
         "https://asnr.test/avis/avis-a",
         "https://asnr.test/avis/avis-b",
     ]
+
+
+# --- paginated-listing mode (documents not in the sitemap, e.g. PDFs) ------
+
+LETTER_SPEC = SourceSpec(
+    name="inspection_letters_inb",
+    base="https://asnr.test",
+    listing_path="/lettres",
+    notice_path_prefix="/content/download/",
+    rss_path="/rss/lettres",
+    default_crawl_delay_s=10.0,
+    doc_url_regex=r"/content/download/\d+/download_file/INSSN-[A-Z]+-\d{4}-\d+\.pdf$",
+)
+
+LETTER_A = (
+    "https://asnr.test/content/download/101/download_file/INSSN-CAE-2025-0257.pdf"
+)
+LETTER_B = (
+    "https://asnr.test/content/download/102/download_file/INSSN-OLS-2026-0866.pdf"
+)
+LETTER_C = (
+    "https://asnr.test/content/download/104/download_file/INSSN-LYO-2026-0643.pdf"
+)
+
+LISTING_ROOT = f"""<html><body>
+<a href="{LETTER_A}">lettre A</a>
+<a href="/lettres/autre-chose">not a document</a>
+</body></html>"""
+LISTING_PAGE_1 = f"""<html><body>
+<a href="{LETTER_B}">lettre B</a>
+<a href="/content/download/103/download_file/autre.pdf">wrong name</a>
+</body></html>"""
+LISTING_PAGE_2 = f"""<html><body><a href="{LETTER_C}">lettre C</a></body></html>"""
+LISTING_PAGE_3 = """<html><body><a href="/lettres">rien ici</a></body></html>"""
+
+
+def _listing_client() -> FakeClient:
+    # root page first (page 1), then ?page=N; unknown urls -> FetchError (404)
+    return FakeClient(
+        {
+            "https://asnr.test/lettres": LISTING_ROOT.encode(),
+            "https://asnr.test/lettres?page=1": LISTING_PAGE_1.encode(),
+            "https://asnr.test/lettres?page=2": LISTING_PAGE_2.encode(),
+            "https://asnr.test/lettres?page=3": LISTING_PAGE_3.encode(),
+        }
+    )
+
+
+def test_enumerate_listing_urls_matches_regex_and_stops() -> None:
+    client = _listing_client()
+    urls = crawl.enumerate_urls(client, LETTER_SPEC)
+    assert urls == [LETTER_A, LETTER_B, LETTER_C]
+    # page 3 has no matching link -> enumeration stops before page 4
+    assert "https://asnr.test/lettres?page=4" not in client.calls
+
+
+def test_enumerate_listing_urls_tolerates_transient_errors() -> None:
+    client = _listing_client()
+    # ?page=1 fails (404): enumeration must continue to ?page=2, ?page=3
+    del client.responses["https://asnr.test/lettres?page=1"]
+    urls = crawl.enumerate_urls(client, LETTER_SPEC)
+    assert urls == [LETTER_A, LETTER_C]
+
+
+def test_enumerate_listing_urls_respects_max_pages() -> None:
+    client = _listing_client()
+    urls = crawl.enumerate_urls(client, LETTER_SPEC, max_listing_pages=1)
+    assert urls == [LETTER_A, LETTER_B]
+    assert "https://asnr.test/lettres?page=2" not in client.calls

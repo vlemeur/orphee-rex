@@ -1,12 +1,15 @@
 """Scrape public ASNR sources into the local raw cache (network, rate-limited).
 
-Thin CLI over src/orphee/crawl.py + src/orphee/net. The full history of the
-incident notices is ~3.2k pages; at the robots.txt Crawl-delay (10 s) a full
-run takes hours — it is resumable (disk cache + manifest), so run it in the
-background: nohup just scrape > /tmp/orphee-scrape.log 2>&1 &
+Thin CLI over src/orphee/crawl.py + src/orphee/net. Full histories: incident
+notices ~3.2k HTML pages, inspection letters ~18k PDFs behind ~1.2k listing
+pages; at the robots.txt Crawl-delay (10 s) a full run takes hours — it is
+resumable (disk cache + manifest), so run it in the background:
+    nohup just scrape --source inspection_letters_inb > /tmp/orphee-scrape.log 2>&1 &
 Examples:
     uv run python scripts/scrape.py --limit 50    # smoke
     uv run python scripts/scrape.py               # full history
+    uv run python scripts/scrape.py --source inspection_letters_inb \
+        --max-pages 3 --limit 20   # smoke on the letters listing
 """
 
 from __future__ import annotations
@@ -40,6 +43,12 @@ def main() -> None:
         default=None,
         help="seconds between requests (default: robots.txt Crawl-delay)",
     )
+    parser.add_argument(
+        "--max-pages",
+        type=int,
+        default=None,
+        help="max paginated listing pages to crawl (listing-mode sources only)",
+    )
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
@@ -67,7 +76,7 @@ def main() -> None:
             delay = spec.default_crawl_delay_s
     logger.info("crawl delay: %.1fs", delay)
 
-    urls = crawl.enumerate_urls(bootstrap, spec)
+    urls = crawl.enumerate_urls(bootstrap, spec, max_listing_pages=args.max_pages)
     raw_dir.mkdir(parents=True, exist_ok=True)
     (raw_dir / "urls.txt").write_text("\n".join(urls) + "\n", encoding="utf-8")
 
